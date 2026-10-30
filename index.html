@@ -671,8 +671,19 @@ vuelva pronto</textarea></div>
     let productos = JSON.parse(localStorage.getItem('pos_productos_cache_metapan') || "[]");
     let promociones = JSON.parse(localStorage.getItem('pos_promos_metapan') || "[]");
     let registeredClients = JSON.parse(localStorage.getItem('pos_clientes_fidelidad_cache_metapan') || "[]");
-    let tickets = [{ id: 1, nombre: "Ticket 1", cart: [], descuento: 0, tipoDescuento: 'porcentaje', selectedIndex: -1 }];
-    let activeTicketId = 1;
+    
+    // 💾 Persistencia automática de tickets pendientes en navegador
+    let tickets = JSON.parse(localStorage.getItem('pos_tickets_pendientes_metapan') || 'null');
+    if (!tickets || tickets.length === 0) {
+      tickets = [{ id: 1, nombre: "Ticket 1", cart: [], descuento: 0, tipoDescuento: 'porcentaje', selectedIndex: -1 }];
+    }
+    let activeTicketId = parseInt(localStorage.getItem('pos_active_ticket_id_metapan')) || tickets[0].id;
+
+    function guardarEstadoTickets() {
+      localStorage.setItem('pos_tickets_pendientes_metapan', JSON.stringify(tickets));
+      localStorage.setItem('pos_active_ticket_id_metapan', activeTicketId);
+    }
+
     let historialVentas = JSON.parse(localStorage.getItem('pos_historial_ventas_metapan') || "[]");
     let codigoEdicionAnterior = null;
     let itemEditandoPrecioIndex = null;
@@ -879,6 +890,8 @@ vuelva pronto</textarea></div>
       renderTablaUsuarios();
       renderTablaPromos();
       cargarConfigTicketUI();
+      renderTicketTabs();
+      renderCart();
 
       const hoyStr = new Date().toISOString().slice(0, 10);
       document.getElementById('repFechaDesde').value = hoyStr;
@@ -1058,9 +1071,15 @@ vuelva pronto</textarea></div>
       `).join('');
       const activeT = getActiveTicket();
       document.getElementById('lblActiveTicketName').innerText = activeT ? activeT.nombre : 'Ticket 1';
+      guardarEstadoTickets();
     }
 
-    function seleccionarTicket(id) { activeTicketId = id; renderTicketTabs(); renderCart(); focusBarcode(); }
+    function seleccionarTicket(id) { 
+      activeTicketId = id; 
+      renderTicketTabs(); 
+      renderCart(); 
+      focusBarcode(); 
+    }
     
     function abrirModalNuevoTicket() {
       document.getElementById('inputNombreNuevoTicket').value = `Ticket ${tickets.length + 1}`;
@@ -1083,7 +1102,9 @@ vuelva pronto</textarea></div>
       const newId = Date.now();
       tickets.push({ id: newId, nombre: nombreTicket, cart: [], descuento: 0, tipoDescuento: 'porcentaje', selectedIndex: -1 });
       activeTicketId = newId;
-      renderTicketTabs(); renderCart(); 
+      renderTicketTabs(); 
+      renderCart(); 
+      guardarEstadoTickets();
       cerrarModalNuevoTicket();
     }
 
@@ -1092,7 +1113,10 @@ vuelva pronto</textarea></div>
       if (tickets.length <= 1) return alert("Debe mantener al menos un ticket abierto.");
       tickets = tickets.filter(t => t.id !== id);
       activeTicketId = tickets[tickets.length - 1].id;
-      renderTicketTabs(); renderCart(); focusBarcode();
+      renderTicketTabs(); 
+      renderCart(); 
+      guardarEstadoTickets();
+      focusBarcode();
     }
 
     function agregarProductoSubmit(e) { if (e) e.preventDefault(); agregarProductoEnter(); }
@@ -1136,7 +1160,9 @@ vuelva pronto</textarea></div>
           t.cart.push({ ...prod, precioAplicado, cantidad }); 
           t.selectedIndex = t.cart.length - 1; 
         }
-        renderCart(); renderTicketTabs();
+        renderCart(); 
+        renderTicketTabs();
+        guardarEstadoTickets();
       } else { alert("Producto no encontrado."); }
       inputEl.value = '';
       focusBarcode();
@@ -1179,6 +1205,7 @@ vuelva pronto</textarea></div>
       document.getElementById('subtotalVal').innerText = `$${subtotal.toFixed(2)}`;
       document.getElementById('totalVal').innerText = `$${total.toFixed(2)}`;
       document.getElementById('totalItemsCount').innerText = count.toFixed(2);
+      guardarEstadoTickets();
     }
 
     function abrirModalEditarPrecio(idx) {
@@ -1213,23 +1240,28 @@ vuelva pronto</textarea></div>
       t.cart[itemEditandoPrecioIndex].precioManual = nuevoPrecio;
       t.cart[itemEditandoPrecioIndex].precioAplicado = nuevoPrecio;
       renderCart();
+      guardarEstadoTickets();
       cerrarModalEditarPrecio();
     }
 
     function seleccionarFilaCarrito(idx) { getActiveTicket().selectedIndex = idx; renderCart(); }
+    
     function modCantidad(idx, delta) {
       const t = getActiveTicket();
       if (idx < 0 || idx >= t.cart.length) return;
       t.cart[idx].cantidad += delta;
       if (t.cart[idx].cantidad <= 0) { t.cart.splice(idx, 1); t.selectedIndex = Math.max(0, idx - 1); }
       renderCart();
+      guardarEstadoTickets();
     }
+
     function eliminarItem(idx) {
       const t = getActiveTicket();
       if (idx < 0 || idx >= t.cart.length) return;
       t.cart.splice(idx, 1);
       t.selectedIndex = Math.max(0, idx - 1);
       renderCart();
+      guardarEstadoTickets();
     }
 
     document.addEventListener('keydown', (e) => {
@@ -1685,7 +1717,12 @@ vuelva pronto</textarea></div>
 
       cerrarModalCobro();
       t.cart = []; t.selectedIndex = -1;
-      renderTicketTabs(); renderCart(); focusBarcode();
+      
+      // Limpiar y actualizar persistencia tras cobro exitoso
+      guardarEstadoTickets();
+      renderTicketTabs(); 
+      renderCart(); 
+      focusBarcode();
       actualizarCorteCaja();
 
       return ventaObj;
